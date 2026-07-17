@@ -1,0 +1,103 @@
+name: deploy
+
+# Manual release: choose bump major/minor/patch → tag vX.Y.Z is created,
+# the multi-arch image is pushed to GHCR, and a GitHub Release is created.
+# The next version is computed from the latest semver git tag (default v0.0.0).
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (from latest tag)"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+permissions:
+  contents: write # push tag + create release
+  packages: write # push image to GHCR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need all tags to compute the version
+
+      - name: Compute next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          latest=$(git tag -l 'v*' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V | tail -1)
+          latest=${latest:-v0.0.0}
+          echo "latest tag: $latest"
+          ver=${latest#v}
+          IFS=. read -r major minor patch <<< "$ver"
+          case "$BUMP" in
+            major) major=$((major+1)); minor=0; patch=0 ;;
+            minor) minor=$((minor+1)); patch=0 ;;
+            patch) patch=$((patch+1)) ;;
+          esac
+          next="v${major}.${minor}.${patch}"
+          if git rev-parse -q --verify "refs/tags/$next" > /dev/null; then
+            echo "::error::tag $next already exists"
+            exit 1
+          fi
+          echo "next version: $next"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "track_major=$major" >> "$GITHUB_OUTPUT"
+          echo "track_minor=$major.$minor" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          next="${{ steps.version.outputs.next }}"
+          git tag -a "$next" -m "release $next"
+          git push origin "$next"
+
+      - name: Lowercase image name
+        run: |
+          img="ghcr.io/${{ github.repository }}"
+          img=$(echo "$img" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE=$img" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.next }}
+            ${{ env.IMAGE }}:${{ steps.version.outputs.track_minor }}
+            ${{ env.IMAGE }}:${{ steps.version.outputs.track_major }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.next }}" \
+            --title "${{ steps.version.outputs.next }}" \
+            --generate-notes

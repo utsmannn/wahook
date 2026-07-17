@@ -1,0 +1,14 @@
+services:
+  wahook:
+    build: .
+    image: wahook:latest
+    container_name: wahook
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - wahook-data:/data
+    environment:
+      TZ: Asia/Jakarta
+
+volumes:
+  wahook-data:

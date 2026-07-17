@@ -1,0 +1,10 @@
+.git
+wahook
+wa.db
+wa.db-*
+data/
+config.yaml
+*.log
+Dockerfile
+docker-compose.yml
+.dockerignore

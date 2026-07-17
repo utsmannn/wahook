@@ -1,0 +1,7 @@
+wahook
+wa.db
+wa.db-journal
+wa.db-wal
+wa.db-shm
+config.yaml
+.DS_Store
