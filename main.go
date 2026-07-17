@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,6 +19,37 @@ import (
 	"wahook/internal/webhook"
 	"wahook/internal/whatsapp"
 )
+
+// seenIDs is a small bounded LRU of recently-dispatched message IDs.
+// whatsmeow can surface the same message twice (e.g. LID vs PN addressing),
+// so we dedupe by Info.ID to avoid forwarding duplicates.
+type seenIDs struct {
+	mu   sync.Mutex
+	ids  map[string]struct{}
+	order []string
+	max  int
+}
+
+func newSeenIDs(max int) *seenIDs {
+	return &seenIDs{ids: make(map[string]struct{}), max: max}
+}
+
+// add reports whether id was already present.
+func (s *seenIDs) add(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.ids[id]; ok {
+		return true
+	}
+	s.ids[id] = struct{}{}
+	s.order = append(s.order, id)
+	if len(s.order) > s.max {
+		oldest := s.order[0]
+		s.order = s.order[1:]
+		delete(s.ids, oldest)
+	}
+	return false
+}
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
@@ -33,9 +65,19 @@ func main() {
 	log.Info("config loaded", "webhooks", len(cfg.Webhooks), "store", cfg.Device.Store)
 
 	dispatcher := webhook.NewDispatcher(cfg.Webhooks, log)
+	seen := newSeenIDs(1024)
 
 	waClient, err := whatsapp.New(context.Background(), cfg.Device.Store, log, func(evt *events.Message) {
 		p := payload.FromMessage(evt)
+		// Skip receipts / protocol / typing indicators — no user content.
+		if p.IsEmpty() {
+			return
+		}
+		// Dedupe: whatsmeow may emit the same message twice (LID vs PN).
+		if seen.add(p.ID) {
+			log.Debug("duplicate message dropped", "id", p.ID)
+			return
+		}
 		// No message text at info level (privacy) — debug only.
 		log.Info("message received", "id", p.ID, "chat", p.Chat, "type", p.Type, "text_len", len(p.Text))
 		dispatcher.Dispatch(p)

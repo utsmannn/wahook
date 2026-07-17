@@ -140,6 +140,8 @@ Each matching message produces one `POST` per webhook. `Content-Type: applicatio
 
 A successful delivery is any `2xx` response. Anything else or a network error triggers an exponential-backoff retry (`1s → 2s → 4s …`, capped at 30s).
 
+Only real user content is forwarded — receipts, typing indicators and protocol messages are dropped before dispatching, and duplicate deliveries of the same message ID are deduplicated.
+
 ## Deploying to a server
 
 The image is published to GHCR by the release workflow. On the server:

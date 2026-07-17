@@ -35,6 +35,13 @@ type MediaInfo struct {
 	PTT        bool   `json:"ptt,omitempty"`
 }
 
+// IsEmpty reports whether the payload carries no user-visible content.
+// Receipts, protocol messages and typing indicators produce an "unknown"
+// payload with empty text and no media — these should not be dispatched.
+func (p *Payload) IsEmpty() bool {
+	return p.Type == "unknown" && p.Text == "" && p.Media == nil
+}
+
 // FromMessage converts an events.Message into a Payload.
 func FromMessage(evt *events.Message) *Payload {
 	info := evt.Info
