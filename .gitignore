@@ -4,4 +4,6 @@ wa.db-journal
 wa.db-wal
 wa.db-shm
 config.yaml
+AGENTS.md
+TECHDOC.md
 .DS_Store
