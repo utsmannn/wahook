@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           latest=$(git tag -l 'v*' \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | sort -V | tail -1)
+            | sort -V | tail -1 || true)
           latest=${latest:-v0.0.0}
           echo "latest tag: $latest"
           ver=${latest#v}
