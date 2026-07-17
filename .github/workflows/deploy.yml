@@ -1,4 +1,5 @@
 name: deploy
+run-name: release ${{ inputs.bump }} bump
 
 # Manual release: choose bump major/minor/patch → tag vX.Y.Z is created,
 # the multi-arch image is pushed to GHCR, and a GitHub Release is created.
