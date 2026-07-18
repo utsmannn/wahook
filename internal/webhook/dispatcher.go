@@ -152,6 +152,9 @@ func matchFilters(f config.FilterConfig, p *payload.Payload) bool {
 	if f.ShouldIgnoreBroadcast() && strings.HasSuffix(p.Chat, "@broadcast") {
 		return false
 	}
+	if f.ShouldIgnoreNewsletter() && strings.HasSuffix(p.Chat, "@newsletter") {
+		return false
+	}
 	if len(f.Senders) > 0 && !slices.Contains(f.Senders, p.Sender) {
 		return false
 	}

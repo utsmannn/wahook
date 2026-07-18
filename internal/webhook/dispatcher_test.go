@@ -21,6 +21,7 @@ func TestMatchFilters(t *testing.T) {
 	group := &payload.Payload{Chat: "1@g.us", Sender: "62@s.whatsapp.net", IsGroup: true, Type: "text", Text: "halo"}
 	fromMe := &payload.Payload{Chat: "62@s.whatsapp.net", Sender: "me@s.whatsapp.net", IsFromMe: true, Type: "text", Text: "halo"}
 	broadcast := &payload.Payload{Chat: "status@broadcast", Sender: "me@s.whatsapp.net", Type: "text", Text: "halo"}
+	newsletter := &payload.Payload{Chat: "120363198449433040@newsletter", Sender: "news@s.whatsapp.net", Type: "text", Text: "halo"}
 	cmd := &payload.Payload{Chat: "62@s.whatsapp.net", Sender: "62@s.whatsapp.net", Type: "text", Text: "!cmd do"}
 	img := &payload.Payload{Chat: "62@s.whatsapp.net", Sender: "62@s.whatsapp.net", Type: "image", Text: "!cmd caption"}
 
@@ -39,6 +40,8 @@ func TestMatchFilters(t *testing.T) {
 		{"ignore_from_me", config.FilterConfig{IgnoreFromMe: true}, fromMe, false},
 		{"broadcast default ignored", config.FilterConfig{}, broadcast, false},
 		{"broadcast allowed", config.FilterConfig{IgnoreBroadcast: boolPtr(false)}, broadcast, true},
+		{"newsletter default ignored", config.FilterConfig{}, newsletter, false},
+		{"newsletter allowed", config.FilterConfig{IgnoreNewsletter: boolPtr(false)}, newsletter, true},
 		{"senders whitelist hit", config.FilterConfig{Senders: []string{"62@s.whatsapp.net"}}, dm, true},
 		{"senders whitelist miss", config.FilterConfig{Senders: []string{"63@s.whatsapp.net"}}, dm, false},
 		{"keyword hit", config.FilterConfig{KeywordPrefix: "!cmd"}, cmd, true},

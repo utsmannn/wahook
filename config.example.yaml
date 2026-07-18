@@ -5,7 +5,7 @@ device:
 
 media:
   # public_url: https://wahook.example.com  # if set, media.file_url is populated
-  storage: ./files  # where downloaded media is stored
+  storage: ./files # where downloaded media is stored
   max_bytes: 10485760 # 10MB; larger files are skipped with an error note
 
 webhooks:
@@ -20,6 +20,7 @@ webhooks:
       dm_only: false
       ignore_from_me: false
       ignore_broadcast: true
+      ignore_newsletter: true
       senders: []
       keyword_prefix: ""
 

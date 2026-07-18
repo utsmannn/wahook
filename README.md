@@ -103,7 +103,8 @@ All filters are ANDed. A message that fails the filter for one webhook is still 
 | `groups_only` | `false` | Only group messages. |
 | `dm_only` | `false` | Only direct messages. Mutually exclusive with `groups_only`. |
 | `ignore_from_me` | `false` | Skip messages sent by your own account (from another linked device). |
-| `ignore_broadcast` | `true` | Skip status / broadcast messages. |
+| `ignore_broadcast` | `true` | Skip status / broadcast messages (`@broadcast` JIDs). |
+| `ignore_newsletter` | `true` | Skip WhatsApp Channel / newsletter messages (`@newsletter` JIDs). |
 | `senders` | `[]` | Whitelist of sender JIDs (e.g. `62812xxx@s.whatsapp.net`). Empty = all. |
 | `keyword_prefix` | `""` | Only text messages starting with this prefix (e.g. `"!cmd"`). Non-text always fails this filter. |
 

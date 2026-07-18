@@ -74,8 +74,17 @@ type FilterConfig struct {
 	DMOnly          bool     `yaml:"dm_only"`
 	IgnoreFromMe    bool     `yaml:"ignore_from_me"`
 	IgnoreBroadcast *bool    `yaml:"ignore_broadcast"`
+	IgnoreNewsletter *bool   `yaml:"ignore_newsletter"`
 	Senders         []string `yaml:"senders"`
 	KeywordPrefix   string   `yaml:"keyword_prefix"`
+}
+
+// ShouldIgnoreNewsletter reports whether newsletter messages are dropped (default true).
+func (f FilterConfig) ShouldIgnoreNewsletter() bool {
+	if f.IgnoreNewsletter == nil {
+		return true
+	}
+	return *f.IgnoreNewsletter
 }
 
 // ShouldIgnoreBroadcast reports whether broadcast/status messages are dropped (default true).
