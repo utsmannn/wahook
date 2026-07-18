@@ -146,6 +146,56 @@ A successful delivery is any `2xx` response. Anything else or a network error tr
 
 Only real user content is forwarded — receipts, typing indicators and protocol messages are dropped before dispatching, and duplicate deliveries of the same message ID are deduplicated.
 
+### Serving media files (optional)
+
+By default, `payload.media` only carries metadata (mime type, dimensions, size). The actual file is **not** delivered with the webhook. To get the file, you have two options:
+
+1. **Let wahook serve it over HTTP** (recommended) — set `media.public_url`, and each media payload will include a `media.file_url` your consumer can `GET`.
+2. **Do nothing** — your consumer downloads the media itself via the WhatsApp web API using the message ID (out of scope for this project).
+
+#### How `media.public_url` works
+
+wahook runs an **internal HTTP file server on port `8080`** (started only when `media.public_url` is set). When a media message arrives:
+
+1. The file is downloaded and decrypted via whatsmeow.
+2. It is saved to `media.storage` (default `./files`, container path `/data/files` when using the volume from the sample compose).
+3. `payload.media.file_url` is populated as `<public_url>/files/<message-id>.<ext>`.
+
+Your consumer just fetches that URL to get the raw bytes with the correct `Content-Type`.
+
+#### Setup
+
+You need a public URL that routes to wahook's port `8080`. wahook does **not** know its own public URL — you tell it via `media.public_url`, and you wire up the tunnel/reverse-proxy yourself.
+
+A minimal config:
+
+```yaml
+media:
+  public_url: https://whatsapp.example.com
+  storage: /data/files
+  max_bytes: 10485760  # 10MB; larger files are skipped
+```
+
+Expose the file port in `docker-compose.yml`:
+
+```yaml
+services:
+  wahook:
+    # ...
+    ports:
+      - "8080:8080"  # host:container — pick any host port (e.g. 8066:8080)
+```
+
+Then point a tunnel / reverse proxy at `http://<host>:8080`. Examples:
+
+- **Cloudflare Tunnel** (`cloudflared`): create a public hostname (e.g. `whatsapp.example.com`) → service `http://localhost:8080`. No path rewrite — the tunnel serves the container's root, so `file_url` becomes `https://whatsapp.example.com/files/<id>.<ext>`.
+- **Caddy**: `whatsapp.example.com { reverse_proxy localhost:8080 }`.
+- **nginx**: `server_name whatsapp.example.com; location / { proxy_pass http://localhost:8080; }`.
+
+Pick a **dedicated subdomain at the root** (e.g. `whatsapp.example.com`) rather than a path like `example.com/whatsapp/`, because wahook's file server serves at `/files/<id>.<ext>` and does not handle path-prefix rewrites itself. If you must use a path prefix, strip it at the proxy layer.
+
+> **Path traversal protection:** the file server rejects any request containing `..`, and file names are opaque message IDs — they are not guessable. That said, the file server is **unauthenticated by default**. Anyone who can reach the URL can fetch stored media. Put it behind Cloudflare Access, an auth gateway, or a private tunnel if the files are sensitive.
+
 ### Media payloads (when `media.public_url` is set)
 
 A media message (image / video / audio / document / sticker) carries a `media` object. With `media.public_url` configured, the file is downloaded, decrypted, stored under `media.storage`, and served at `<public_url>/files/<id>.<ext>`:
