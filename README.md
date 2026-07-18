@@ -144,6 +144,46 @@ A successful delivery is any `2xx` response. Anything else or a network error tr
 
 Only real user content is forwarded — receipts, typing indicators and protocol messages are dropped before dispatching, and duplicate deliveries of the same message ID are deduplicated.
 
+### Media payloads (when `media.download: true`)
+
+A media message (image / video / audio / document / sticker) carries a `media` object. With `media.download` enabled, the file is downloaded, decrypted, and base64-encoded into `media.data`:
+
+```json
+{
+  "id": "3EB0YYYY",
+  "chat": "62812xxx@s.whatsapp.net",
+  "sender": "62812xxx@s.whatsapp.net",
+  "push_name": "Utsman",
+  "is_group": false,
+  "is_from_me": false,
+  "timestamp": "2026-07-17T12:35:01+07:00",
+  "type": "image",
+  "text": "look at this",
+  "media": {
+    "mime_type": "image/jpeg",
+    "file_length": 234567,
+    "width": 1280,
+    "height": 960,
+    "caption": "look at this",
+    "data": "/9j/4AAQSkZJRgABAQEASABIAAD..."
+  }
+}
+```
+
+| `media` field | Description |
+| --- | --- |
+| `mime_type` | MIME type from the source message. |
+| `file_name` | Original filename (documents only). |
+| `file_length` | Decrypted file size in bytes. |
+| `width`, `height` | Pixel dimensions (image / video). |
+| `seconds` | Duration (audio / video). |
+| `ptt` | `true` for voice notes (audio). |
+| `caption` | Caption text, when present. |
+| `data` | Base64-encoded file content. Present only when `media.download: true` and the download succeeded. |
+| `error` | Populated when the download was attempted but failed or was skipped (e.g. exceeded `media.max_bytes`). Metadata fields above are still present. |
+
+> **Size note:** base64 inflates the file by ~33%. A 5MB photo becomes a ~6.7MB payload. Use `media.max_bytes` to cap large files, and raise the webhook `timeout` if you forward big media. `media.data` is never written to logs.
+
 ## Deploying to a server
 
 The image is published to GHCR by the release workflow. On the server:

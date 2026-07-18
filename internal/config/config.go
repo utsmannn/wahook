@@ -39,7 +39,7 @@ type Config struct {
 
 // MediaConfig controls inline media download (base64 into payload).
 type MediaConfig struct {
-	Download bool  `yaml:"download"` // download + base64-encode media into payload.data
+	Download bool  `yaml:"download"`  // download + base64-encode media into payload.data
 	MaxBytes int64 `yaml:"max_bytes"` // skip files larger than this (0 → default 10MB)
 }
 
