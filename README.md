@@ -1,5 +1,7 @@
 # wahook
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A small self-hosted daemon that forwards your **personal WhatsApp** messages to HTTP webhooks. Built on [whatsmeow](https://github.com/tulir/whatsmeow), runs as a single Docker container, no database server, no CGO.
 
 Pair once by scanning a QR code, then every incoming message is POSTed as JSON to whatever endpoints you configure — n8n, Home Assistant, a Discord relay, a custom script, anything that speaks HTTP.
