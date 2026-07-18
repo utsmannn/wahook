@@ -84,7 +84,8 @@ webhooks:                     # at least 1 required
 | Field | Description |
 | --- | --- |
 | `device.store` | Path to the sqlite session file. `./wa.db` for the binary, `/data/wa.db` in Docker. |
-| `media.download` | `false` by default. When `true`, media files (image/video/audio/document/sticker) are downloaded and base64-encoded into `payload.media.data`. |
+| `media.public_url` | If set (e.g. `https://wahook.example.com`), downloaded media is served at `<public_url>/files/<id>.<ext>` and `payload.media.file_url` is populated. Requires exposing port `8080`. |
+| `media.storage` | Where downloaded media files are stored. Default `./files` (container: `/data/files` via volume). |
 | `media.max_bytes` | Skip files larger than this when downloading. Default `10485760` (10MB). Skipped files get an `error` note in `media`. |
 | `webhooks[].name` | Unique label for logs. |
 | `webhooks[].url` | HTTP(S) endpoint to POST to. |
@@ -138,15 +139,15 @@ Each matching message produces one `POST` per webhook. `Content-Type: applicatio
 | `timestamp` | RFC3339. |
 | `type` | One of: `text`, `image`, `video`, `audio`, `document`, `sticker`, `location`, `contact`, `reaction`, `unknown`. |
 | `text` | Body text, caption, or display name (depending on `type`). |
-| `media` | Media metadata object, or `null`. When `media.download` is enabled in config, includes a base64 `data` field with the file content. |
+| `media` | Media metadata object, or `null`. When `media.public_url` is configured, includes a `file_url` pointing to the served file. |
 
 A successful delivery is any `2xx` response. Anything else or a network error triggers an exponential-backoff retry (`1s → 2s → 4s …`, capped at 30s).
 
 Only real user content is forwarded — receipts, typing indicators and protocol messages are dropped before dispatching, and duplicate deliveries of the same message ID are deduplicated.
 
-### Media payloads (when `media.download: true`)
+### Media payloads (when `media.public_url` is set)
 
-A media message (image / video / audio / document / sticker) carries a `media` object. With `media.download` enabled, the file is downloaded, decrypted, and base64-encoded into `media.data`:
+A media message (image / video / audio / document / sticker) carries a `media` object. With `media.public_url` configured, the file is downloaded, decrypted, stored under `media.storage`, and served at `<public_url>/files/<id>.<ext>`:
 
 ```json
 {
@@ -165,7 +166,7 @@ A media message (image / video / audio / document / sticker) carries a `media` o
     "width": 1280,
     "height": 960,
     "caption": "look at this",
-    "data": "/9j/4AAQSkZJRgABAQEASABIAAD..."
+    "file_url": "https://wahook.example.com/files/3EB0YYYY.jpg"
   }
 }
 ```
@@ -179,10 +180,12 @@ A media message (image / video / audio / document / sticker) carries a `media` o
 | `seconds` | Duration (audio / video). |
 | `ptt` | `true` for voice notes (audio). |
 | `caption` | Caption text, when present. |
-| `data` | Base64-encoded file content. Present only when `media.download: true` and the download succeeded. |
+| `file_url` | Public URL of the stored file. Present only when `media.public_url` is configured and the download succeeded. |
 | `error` | Populated when the download was attempted but failed or was skipped (e.g. exceeded `media.max_bytes`). Metadata fields above are still present. |
 
-> **Size note:** base64 inflates the file by ~33%. A 5MB photo becomes a ~6.7MB payload. Use `media.max_bytes` to cap large files, and raise the webhook `timeout` if you forward big media. `media.data` is never written to logs.
+> **Security note:** the file server on port `8080` is unauthenticated — anyone who can reach it can access stored media. Put it behind a reverse proxy with auth (e.g. Cloudflare Access, an auth gateway, or a private tunnel). The URLs are not guessable (message IDs are opaque) but do not rely on that alone.
+>
+> **Docker:** expose port `8080` in `docker-compose.yml` only if you set `media.public_url`. Otherwise leave it unexposed — no files will be served.
 
 ## Deploying to a server
 

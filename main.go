@@ -3,16 +3,18 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
+
+	"net/http"
 
 	"go.mau.fi/whatsmeow/types/events"
 	_ "time/tzdata" // embedded tz database — final image is scratch (no system tzdata)
@@ -54,10 +56,10 @@ func (s *seenIDs) add(id string) bool {
 	return false
 }
 
-// attachMedia downloads the media attached to evt via c and base64-encodes
-// it into p.Media.Data. Files larger than maxBytes are skipped with an error
-// note on the payload.
-func attachMedia(log *slog.Logger, c *whatsapp.Client, p *payload.Payload, evt *events.Message, maxBytes int64) {
+// attachMedia downloads the media attached to evt, saves it under storageDir,
+// and sets p.Media.FileURL when publicURL is non-empty. Files larger than
+// maxBytes are skipped with an error note on the payload.
+func attachMedia(log *slog.Logger, c *whatsapp.Client, p *payload.Payload, evt *events.Message, storageDir, publicURL string, maxBytes int64) {
 	if maxBytes > 0 && int64(p.Media.FileLength) > maxBytes {
 		p.Media.Error = fmt.Sprintf("file size %d exceeds max_bytes %d, skipped", p.Media.FileLength, maxBytes)
 		log.Warn("media too large, skipping", "id", p.ID, "size", p.Media.FileLength, "max", maxBytes)
@@ -72,11 +74,61 @@ func attachMedia(log *slog.Logger, c *whatsapp.Client, p *payload.Payload, evt *
 		p.Media.Error = err.Error()
 		return
 	}
-	p.Media.Data = base64.StdEncoding.EncodeToString(data)
 	if mime != "" {
 		p.Media.MimeType = mime
 	}
-	log.Info("media downloaded", "id", p.ID, "bytes", len(data))
+	name := p.ID + extFor(mime)
+	full := filepath.Join(storageDir, name)
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		log.Warn("media storage mkdir failed", "id", p.ID, "err", err)
+		p.Media.Error = err.Error()
+		return
+	}
+	if err := os.WriteFile(full, data, 0o644); err != nil {
+		log.Warn("media storage write failed", "id", p.ID, "err", err)
+		p.Media.Error = err.Error()
+		return
+	}
+	if publicURL != "" {
+		p.Media.FileURL = publicURL + "/files/" + name
+	}
+	log.Info("media stored", "id", p.ID, "bytes", len(data), "path", full)
+}
+
+// extFor returns a file extension for a mime type, defaulting to .bin.
+func extFor(mime string) string {
+	switch mime {
+	case "image/jpeg", "image/jpg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	case "video/mp4":
+		return ".mp4"
+	case "audio/ogg", "audio/ogg; codecs=opus":
+		return ".ogg"
+	case "audio/mpeg":
+		return ".mp3"
+	case "application/pdf":
+		return ".pdf"
+	}
+	return ".bin"
+}
+
+// startFileServer serves /files/ from dir on port 8080.
+// Mounted at /files/ so it composes with media.public_url + "/files/" + name.
+func startFileServer(dir string, log *slog.Logger) {
+	mux := http.NewServeMux()
+	mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(dir))))
+	go func() {
+		log.Info("file server listening", "addr", ":8080")
+		if err := http.ListenAndServe(":8080", mux); err != nil {
+			log.Error("file server stopped", "err", err)
+		}
+	}()
 }
 
 func main() {
@@ -91,6 +143,10 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("config loaded", "webhooks", len(cfg.Webhooks), "store", cfg.Device.Store)
+	if cfg.Media.PublicURL != "" {
+		log.Info("media serving enabled", "public_url", cfg.TrimPublicURL(), "storage", cfg.Media.Storage)
+		startFileServer(cfg.Media.Storage, log)
+	}
 
 	dispatcher := webhook.NewDispatcher(cfg.Webhooks, log)
 	seen := newSeenIDs(1024)
@@ -105,8 +161,8 @@ func main() {
 			log.Debug("duplicate message dropped", "id", p.ID)
 			return
 		}
-		if cfg.Media.Download && p.Media != nil {
-			attachMedia(log, waClient, p, evt, cfg.Media.MaxBytes)
+		if cfg.Media.PublicURL != "" && p.Media != nil {
+			attachMedia(log, waClient, p, evt, cfg.Media.Storage, cfg.TrimPublicURL(), cfg.Media.MaxBytes)
 		}
 		log.Info("message received", "id", p.ID, "chat", p.Chat, "type", p.Type, "text_len", len(p.Text))
 		dispatcher.Dispatch(p)

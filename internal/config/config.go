@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -37,10 +38,11 @@ type Config struct {
 	Webhooks []WebhookConfig `yaml:"webhooks"`
 }
 
-// MediaConfig controls inline media download (base64 into payload).
+// MediaConfig controls media download and serving via file URLs.
 type MediaConfig struct {
-	Download bool  `yaml:"download"`  // download + base64-encode media into payload.data
-	MaxBytes int64 `yaml:"max_bytes"` // skip files larger than this (0 → default 10MB)
+	PublicURL string `yaml:"public_url"` // public base URL; if set, media.file_url is populated
+	Storage   string `yaml:"storage"`    // where to store downloaded files; default ./files
+	MaxBytes  int64  `yaml:"max_bytes"`  // skip files larger than this (0 → default 10MB)
 }
 
 // DeviceConfig holds session storage settings.
@@ -105,6 +107,9 @@ func (c *Config) applyDefaults() {
 	if c.Device.Store == "" {
 		c.Device.Store = "./wa.db"
 	}
+	if c.Media.Storage == "" {
+		c.Media.Storage = "./files"
+	}
 	if c.Media.MaxBytes == 0 {
 		c.Media.MaxBytes = 10 * 1024 * 1024
 	}
@@ -139,5 +144,16 @@ func (c *Config) validate() error {
 			return fmt.Errorf("config: webhook %q: groups_only and dm_only are mutually exclusive", w.Name)
 		}
 	}
+	if c.Media.PublicURL != "" {
+		u, err := url.Parse(c.Media.PublicURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("config: media.public_url must be a valid http(s) URL")
+		}
+	}
 	return nil
+}
+
+// TrimPublicURL returns the public URL with trailing slashes trimmed.
+func (c *Config) TrimPublicURL() string {
+	return strings.TrimRight(c.Media.PublicURL, "/")
 }

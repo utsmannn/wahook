@@ -4,7 +4,8 @@ device:
   store: ./wa.db
 
 media:
-  download: false # true → base64-encode files into payload.media.data
+  # public_url: https://wahook.example.com  # if set, media.file_url is populated
+  storage: ./files  # where downloaded media is stored
   max_bytes: 10485760 # 10MB; larger files are skipped with an error note
 
 webhooks:
