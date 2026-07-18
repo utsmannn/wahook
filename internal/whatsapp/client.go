@@ -4,6 +4,7 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,6 +16,10 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	_ "modernc.org/sqlite"
 )
+
+// ErrNotDownloadable is returned by DownloadMessageMedia when the message
+// carries no downloadable media (text, contact, location, reaction, etc.).
+var ErrNotDownloadable = errors.New("message has no downloadable media")
 
 // Client wraps a whatsmeow client and its session store.
 type Client struct {
@@ -89,6 +94,43 @@ func (c *Client) Disconnect() {
 	if err := c.container.Close(); err != nil {
 		c.log.Warn("closing session store", "err", err)
 	}
+}
+
+// DownloadMessageMedia fetches and decrypts the media attached to evt and
+// returns the raw bytes and mime type.
+func (c *Client) DownloadMessageMedia(evt *events.Message) ([]byte, string, error) {
+	msg := evt.Message
+	var downloadable whatsmeow.DownloadableMessage
+	var mime string
+	switch {
+	case msg.GetImageMessage() != nil:
+		m := msg.GetImageMessage()
+		downloadable = m
+		mime = m.GetMimetype()
+	case msg.GetVideoMessage() != nil:
+		m := msg.GetVideoMessage()
+		downloadable = m
+		mime = m.GetMimetype()
+	case msg.GetAudioMessage() != nil:
+		m := msg.GetAudioMessage()
+		downloadable = m
+		mime = m.GetMimetype()
+	case msg.GetDocumentMessage() != nil:
+		m := msg.GetDocumentMessage()
+		downloadable = m
+		mime = m.GetMimetype()
+	case msg.GetStickerMessage() != nil:
+		m := msg.GetStickerMessage()
+		downloadable = m
+		mime = m.GetMimetype()
+	default:
+		return nil, "", ErrNotDownloadable
+	}
+	data, err := c.wa.Download(context.Background(), downloadable)
+	if err != nil {
+		return nil, mime, err
+	}
+	return data, mime, nil
 }
 
 func (c *Client) handleEvent(evt any) {

@@ -84,6 +84,8 @@ webhooks:                     # at least 1 required
 | Field | Description |
 | --- | --- |
 | `device.store` | Path to the sqlite session file. `./wa.db` for the binary, `/data/wa.db` in Docker. |
+| `media.download` | `false` by default. When `true`, media files (image/video/audio/document/sticker) are downloaded and base64-encoded into `payload.media.data`. |
+| `media.max_bytes` | Skip files larger than this when downloading. Default `10485760` (10MB). Skipped files get an `error` note in `media`. |
 | `webhooks[].name` | Unique label for logs. |
 | `webhooks[].url` | HTTP(S) endpoint to POST to. |
 | `webhooks[].headers` | Static headers added to every POST (e.g. auth). |
@@ -136,7 +138,7 @@ Each matching message produces one `POST` per webhook. `Content-Type: applicatio
 | `timestamp` | RFC3339. |
 | `type` | One of: `text`, `image`, `video`, `audio`, `document`, `sticker`, `location`, `contact`, `reaction`, `unknown`. |
 | `text` | Body text, caption, or display name (depending on `type`). |
-| `media` | Media metadata object, or `null`. **Files are not downloaded in the MVP** — only metadata (mime, dimensions, file size, caption, duration). |
+| `media` | Media metadata object, or `null`. When `media.download` is enabled in config, includes a base64 `data` field with the file content. |
 
 A successful delivery is any `2xx` response. Anything else or a network error triggers an exponential-backoff retry (`1s → 2s → 4s …`, capped at 30s).
 

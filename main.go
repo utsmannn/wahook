@@ -3,7 +3,10 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -24,10 +27,10 @@ import (
 // whatsmeow can surface the same message twice (e.g. LID vs PN addressing),
 // so we dedupe by Info.ID to avoid forwarding duplicates.
 type seenIDs struct {
-	mu   sync.Mutex
-	ids  map[string]struct{}
+	mu    sync.Mutex
+	ids   map[string]struct{}
 	order []string
-	max  int
+	max   int
 }
 
 func newSeenIDs(max int) *seenIDs {
@@ -51,6 +54,31 @@ func (s *seenIDs) add(id string) bool {
 	return false
 }
 
+// attachMedia downloads the media attached to evt via c and base64-encodes
+// it into p.Media.Data. Files larger than maxBytes are skipped with an error
+// note on the payload.
+func attachMedia(log *slog.Logger, c *whatsapp.Client, p *payload.Payload, evt *events.Message, maxBytes int64) {
+	if maxBytes > 0 && int64(p.Media.FileLength) > maxBytes {
+		p.Media.Error = fmt.Sprintf("file size %d exceeds max_bytes %d, skipped", p.Media.FileLength, maxBytes)
+		log.Warn("media too large, skipping", "id", p.ID, "size", p.Media.FileLength, "max", maxBytes)
+		return
+	}
+	data, mime, err := c.DownloadMessageMedia(evt)
+	if err != nil {
+		if errors.Is(err, whatsapp.ErrNotDownloadable) {
+			return
+		}
+		log.Warn("media download failed", "id", p.ID, "err", err)
+		p.Media.Error = err.Error()
+		return
+	}
+	p.Media.Data = base64.StdEncoding.EncodeToString(data)
+	if mime != "" {
+		p.Media.MimeType = mime
+	}
+	log.Info("media downloaded", "id", p.ID, "bytes", len(data))
+}
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
@@ -67,18 +95,19 @@ func main() {
 	dispatcher := webhook.NewDispatcher(cfg.Webhooks, log)
 	seen := newSeenIDs(1024)
 
-	waClient, err := whatsapp.New(context.Background(), cfg.Device.Store, log, func(evt *events.Message) {
+	var waClient *whatsapp.Client
+	waClient, err = whatsapp.New(context.Background(), cfg.Device.Store, log, func(evt *events.Message) {
 		p := payload.FromMessage(evt)
-		// Skip receipts / protocol / typing indicators — no user content.
 		if p.IsEmpty() {
 			return
 		}
-		// Dedupe: whatsmeow may emit the same message twice (LID vs PN).
 		if seen.add(p.ID) {
 			log.Debug("duplicate message dropped", "id", p.ID)
 			return
 		}
-		// No message text at info level (privacy) — debug only.
+		if cfg.Media.Download && p.Media != nil {
+			attachMedia(log, waClient, p, evt, cfg.Media.MaxBytes)
+		}
 		log.Info("message received", "id", p.ID, "chat", p.Chat, "type", p.Type, "text_len", len(p.Text))
 		dispatcher.Dispatch(p)
 	})

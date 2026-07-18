@@ -33,6 +33,8 @@ type MediaInfo struct {
 	Caption    string `json:"caption,omitempty"`
 	Seconds    uint32 `json:"seconds,omitempty"`
 	PTT        bool   `json:"ptt,omitempty"`
+ Data  string `json:"data,omitempty"`  // base64-encoded file content (if media.download=true)
+ Error string `json:"error,omitempty"` // populated if download was attempted but failed/skipped
 }
 
 // IsEmpty reports whether the payload carries no user-visible content.

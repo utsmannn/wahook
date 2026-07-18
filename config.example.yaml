@@ -3,6 +3,10 @@
 device:
   store: ./wa.db
 
+media:
+  download: false   # true → base64-encode files into payload.media.data
+  max_bytes: 10485760  # 10MB; larger files are skipped with an error note
+
 webhooks:
   - name: local-test
     url: http://localhost:9000/wa

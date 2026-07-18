@@ -33,7 +33,14 @@ func (d Duration) Std() time.Duration { return time.Duration(d) }
 // Config is the root configuration structure.
 type Config struct {
 	Device   DeviceConfig    `yaml:"device"`
+	Media    MediaConfig     `yaml:"media"`
 	Webhooks []WebhookConfig `yaml:"webhooks"`
+}
+
+// MediaConfig controls inline media download (base64 into payload).
+type MediaConfig struct {
+	Download bool  `yaml:"download"` // download + base64-encode media into payload.data
+	MaxBytes int64 `yaml:"max_bytes"` // skip files larger than this (0 → default 10MB)
 }
 
 // DeviceConfig holds session storage settings.
@@ -97,6 +104,9 @@ func Load(path string) (*Config, error) {
 func (c *Config) applyDefaults() {
 	if c.Device.Store == "" {
 		c.Device.Store = "./wa.db"
+	}
+	if c.Media.MaxBytes == 0 {
+		c.Media.MaxBytes = 10 * 1024 * 1024
 	}
 	for i := range c.Webhooks {
 		if c.Webhooks[i].Timeout == 0 {
