@@ -161,6 +161,13 @@ func main() {
 			log.Debug("duplicate message dropped", "id", p.ID)
 			return
 		}
+		if p.IsGroup {
+			gctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if name := waClient.ChatName(gctx, evt.Info.Chat); name != "" {
+				p.ChatName = name
+			}
+			cancel()
+		}
 		if cfg.Media.PublicURL != "" && p.Media != nil {
 			attachMedia(log, waClient, p, evt, cfg.Media.Storage, cfg.TrimPublicURL(), cfg.Media.MaxBytes)
 		}

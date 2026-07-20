@@ -134,6 +134,7 @@ Each matching message produces one `POST` per webhook. `Content-Type: applicatio
 | --- | --- |
 | `id` | WhatsApp message ID. |
 | `chat` | Chat JID. Groups end in `@g.us`. |
+| `chat_name` | Group display name (subject), populated for group messages via a cached lookup. Empty for DMs or when the lookup fails. |
 | `sender` | Sender JID. |
 | `sender_alt` | LID-addressed sender, when present. |
 | `push_name` | Sender display name. |

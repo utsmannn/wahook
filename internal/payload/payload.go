@@ -12,6 +12,7 @@ import (
 type Payload struct {
 	ID        string     `json:"id"`
 	Chat      string     `json:"chat"`
+	ChatName  string     `json:"chat_name,omitempty"`
 	Sender    string     `json:"sender"`
 	SenderAlt string     `json:"sender_alt,omitempty"`
 	PushName  string     `json:"push_name"`

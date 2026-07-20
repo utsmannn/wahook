@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	_ "modernc.org/sqlite"
@@ -27,6 +30,10 @@ type Client struct {
 	container *sqlstore.Container
 	log       *slog.Logger
 	onMessage func(*events.Message)
+
+	groupMu    sync.RWMutex
+	groupNames map[string]string
+	groupMiss  map[string]time.Time
 }
 
 // New opens (or creates) the sqlite session store at storePath and builds a client.
@@ -48,7 +55,14 @@ func New(ctx context.Context, storePath string, log *slog.Logger, onMessage func
 	cli.EnableAutoReconnect = true
 	cli.AutoTrustIdentity = true
 
-	c := &Client{wa: cli, container: container, log: log, onMessage: onMessage}
+	c := &Client{
+		wa:         cli,
+		container:  container,
+		log:        log,
+		onMessage:  onMessage,
+		groupNames: make(map[string]string),
+		groupMiss:  make(map[string]time.Time),
+	}
 	cli.AddEventHandler(c.handleEvent)
 	return c, nil
 }
@@ -131,6 +145,48 @@ func (c *Client) DownloadMessageMedia(evt *events.Message) ([]byte, string, erro
 		return nil, mime, err
 	}
 	return data, mime, nil
+}
+
+// ChatName returns the display name for a group JID ("Subject" in WA terms).
+// Results are cached in memory; failed lookups are cached as misses for 10
+// minutes to avoid hammering the server on a group we can't see.
+// Returns "" for non-group JIDs or when the lookup fails.
+func (c *Client) ChatName(ctx context.Context, jid types.JID) string {
+	if jid.Server != types.GroupServer {
+		return ""
+	}
+	key := jid.String()
+
+	c.groupMu.RLock()
+	if name, ok := c.groupNames[key]; ok {
+		c.groupMu.RUnlock()
+		return name
+	}
+	if at, miss := c.groupMiss[key]; miss && time.Since(at) < 10*time.Minute {
+		c.groupMu.RUnlock()
+		return ""
+	}
+	c.groupMu.RUnlock()
+
+	c.groupMu.Lock()
+	defer c.groupMu.Unlock()
+	if name, ok := c.groupNames[key]; ok {
+		return name
+	}
+	if at, miss := c.groupMiss[key]; miss && time.Since(at) < 10*time.Minute {
+		return ""
+	}
+
+	info, err := c.wa.GetGroupInfo(ctx, jid)
+	if err != nil {
+		c.log.Debug("group info lookup failed", "chat", key, "err", err)
+		c.groupMiss[key] = time.Now()
+		return ""
+	}
+	name := info.GroupName.Name
+	c.groupNames[key] = name
+	delete(c.groupMiss, key)
+	return name
 }
 
 func (c *Client) handleEvent(evt any) {
